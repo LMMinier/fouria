@@ -1,0 +1,16 @@
+FOURIA listening at http://127.0.0.1:11700
+Model: fouria:studio
+"GET /health HTTP/1.1" 200 -
+"POST /api/progression HTTP/1.1" 200 -
+"POST /api/generate-midi HTTP/1.1" 200 -
+"POST /api/drums-808 HTTP/1.1" 200 -
+"GET /health HTTP/1.1" 200 -
+"GET /health HTTP/1.1" 200 -
+"GET /health HTTP/1.1" 200 -
+"POST /api/chat HTTP/1.1" 200 -
+"GET /health HTTP/1.1" 200 -
+"POST /api/chord-midi HTTP/1.1" 404 -
+"POST /api/progression HTTP/1.1" 200 -
+"POST /api/save-session HTTP/1.1" 200 -
+"POST /api/critique HTTP/1.1" 200 -
+"POST /api/fl/action HTTP/1.1" 404 -

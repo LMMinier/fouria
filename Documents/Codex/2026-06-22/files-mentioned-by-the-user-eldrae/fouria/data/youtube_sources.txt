@@ -1,0 +1,15 @@
+# Add one explicitly open-licensed video, playlist, or channel URL per line.
+# Run:
+# python scripts/ingest_youtube.py --limit 20 <URL>
+#
+# Recommended coverage:
+# Accepted: Creative Commons, CC BY, CC0, or public domain.
+# Rejected: YouTube Standard License, unspecified license, paid/course material.
+#
+# Suggested coverage once license-verified:
+# - FL Studio workflow lessons
+# - Beat construction and drum programming
+# - Music theory and songwriting
+# - Arrangement and sound design
+# - Mixing, mastering, and critical listening
+# - Genre-specific production from creators whose material you may use
