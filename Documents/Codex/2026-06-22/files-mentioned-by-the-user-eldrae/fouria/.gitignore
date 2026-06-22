@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+.env
+*.env
+
+# FOURIA runtime artifacts
+tmp/
+logs/
+data/index/
+data/training/
+data/midi/*.mid
+
+# OS
+.DS_Store
+Thumbs.db
