@@ -20,3 +20,8 @@ data/library_index.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Desktop build output
+build/
+dist/
+*.spec
