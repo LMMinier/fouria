@@ -23,6 +23,7 @@ else:
     APP_DIR    = BUNDLE_DIR
 
 os.environ["FOURIA_ROOT"] = str(BUNDLE_DIR)
+os.environ["FOURIA_DESKTOP_EXECUTOR"] = "1"
 sys.path.insert(0, str(BUNDLE_DIR / "server"))
 
 PORT  = int(os.environ.get("FOURIA_PORT", "11700"))

@@ -29,6 +29,7 @@ from audio_tools import analyze_spectrum, analyze_wav, master_plan, mix_plan, vo
 from capabilities import report as capability_report
 from context_injector import build_project_context
 import library_index as _lib_mod
+import desktop_executor
 from library_index import build_library_index, load_library_index, find_sample, library_context_block
 from midi_tools import (
     analyze_midi, chord_progression_spec,
@@ -307,6 +308,8 @@ class FouriaHandler(BaseHTTPRequestHandler):
 
         if path == "/api/fl/ambiguous":
             return self._send({"ok": True, "ambiguous": action_store.ambiguous_actions()})
+        if path == "/api/agent/jobs":
+            return self._send({"ok": True, "jobs": desktop_executor.recent_jobs()})
 
         if path == "/api/capabilities":
             return self._send(capability_report())
@@ -519,6 +522,13 @@ class FouriaHandler(BaseHTTPRequestHandler):
                                         session_id, project.get("title", ""))
                 except Exception:
                     pass
+            connected = bool(FL_STATE.get("last_seen") and time.time() - FL_STATE["last_seen"] < 8)
+            if (
+                not connected
+                and p.get("execute", True)
+                and os.environ.get("FOURIA_DESKTOP_EXECUTOR") == "1"
+            ):
+                plan["desktop_job"] = desktop_executor.start_beat(plan)
             return self._send(plan)
 
         return self._send({"ok": False, "error": "not found"}, 404)
@@ -634,6 +644,17 @@ class FouriaHandler(BaseHTTPRequestHandler):
                 project = FL_STATE.get("project", {})
 
             tool_result = handle_tool(tool_name, tool_args, project)
+            connected = bool(
+                FL_STATE.get("last_seen")
+                and time.time() - FL_STATE["last_seen"] < 8
+            )
+            if (
+                tool_result.get("intent") == "make_beat"
+                and payload.get("execute_fl", True)
+                and not connected
+                and os.environ.get("FOURIA_DESKTOP_EXECUTOR") == "1"
+            ):
+                tool_result["desktop_job"] = desktop_executor.start_beat(tool_result)
 
             session_id = FL_STATE.get("session_id")
             for act in tool_result.get("actions", []):

@@ -7,7 +7,7 @@ import tkinter as tk
 user32 = ctypes.windll.user32
 SW_RESTORE = 9
 KEYUP = 2
-VK = {"ctrl": 0x11, "shift": 0x10, "alt": 0x12, "enter": 0x0D, "esc": 0x1B,
+VK = {"ctrl": 0x11, "shift": 0x10, "alt": 0x12, "enter": 0x0D, "esc": 0x1B, "space": 0x20,
       "f7": 0x76, "f8": 0x77, "f10": 0x79, "v": 0x56}
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000

@@ -503,6 +503,7 @@
       return `<div class="beat-card">
         <div class="beat-card-title">Beat Blueprint</div>
         <div class="beat-card-meta">${bpm} BPM · ${key} ${scale} · ${style} · ${bars} bars</div>
+        ${toolResult.desktop_job ? `<div class="midi-link">FOURIA job: <strong>${toolResult.desktop_job.status}</strong> · ${toolResult.desktop_job.stage}</div>` : ''}
         ${renderMidiFiles(toolResult.midi_files)}
       </div>`;
     }
