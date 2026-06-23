@@ -15,6 +15,10 @@ CAPABILITIES = {
     "automatic_full_mix": {"status": "not_verified", "evidence": "requires stem analysis and safe per-channel FL control"},
     "automatic_full_master": {"status": "not_verified", "evidence": "requires spectral/loudness/true-peak analysis and render verification"},
     "full_song_creation": {"status": "partial", "evidence": "musical generators exist; complete arrangement and sound-selection executor pending"},
+    "make_beat": {"status": "implemented", "evidence": "step patterns + MIDI generation + tempo set from single chat command"},
+    "set_tempo": {"status": "implemented", "evidence": "general.setProjectTempo via bridge"},
+    "load_sample": {"status": "implemented", "evidence": "channels.setChannelSampleFile via bridge"},
+    "step_pattern_write": {"status": "implemented", "evidence": "channels.setGridBit 32-step via bridge"},
 }
 
 

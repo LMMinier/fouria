@@ -301,6 +301,25 @@ def _execute(item):
         playlist.muteTrack(index, int(bool(value.get("enabled", True))))
     elif action == "solo_playlist":
         playlist.soloTrack(index, int(bool(value.get("enabled", True))))
+    elif action == "set_tempo":
+        general.setProjectTempo(_clamp(float(value["bpm"]), 40, 280))
+    elif action == "load_sample":
+        channels.setChannelSampleFile(index, str(value["path"]), True)
+    elif action == "set_channel_color":
+        channels.setChannelColor(index, int(value["color"]), True)
+    elif action == "set_pattern_length":
+        patterns.setPatternLength(index, int(value["steps"]))
+    elif action == "set_steps_32":
+        # Write a full 32-step drum pattern for a channel
+        # value["steps"] is a list of step indices (0-31) that should be ON
+        # value["velocities"] is optional dict {step_index: velocity_0_to_1}
+        steps_on = set(int(s) for s in value.get("steps", []))
+        velocities = {int(k): float(v) for k, v in (value.get("velocities") or {}).items()}
+        length = int(value.get("length", 32))
+        for step in range(length):
+            channels.setGridBit(index, step, 1 if step in steps_on else 0, True)
+            if step in steps_on and step in velocities:
+                _safe(lambda: channels.setStepParameterByIndex(index, 0, step, 1, _clamp(velocities[step], 0, 1), True))
     else:
         raise RuntimeError("unsupported bridge action: " + str(action))
 

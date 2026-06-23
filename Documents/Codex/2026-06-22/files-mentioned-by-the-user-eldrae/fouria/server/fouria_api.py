@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, urlsplit
 import action_store
 import model_client
 import rag
-from audio_tools import analyze_wav, master_plan, mix_plan
+from audio_tools import analyze_spectrum, analyze_wav, master_plan, mix_plan, vocal_eq_params
 from capabilities import report as capability_report
 from context_injector import build_project_context
 from midi_tools import (
@@ -54,6 +54,7 @@ DESTRUCTIVE_ACTIONS = frozenset({
     "mute_mixer", "solo_mixer", "select_mixer", "route_mixer", "set_route_level",
     "set_plugin_mix", "set_plugin_param", "next_preset", "previous_preset",
     "set_pattern_name", "select_pattern", "set_playlist_name", "mute_playlist", "solo_playlist",
+    "set_tempo", "load_sample", "set_channel_color", "set_pattern_length", "set_steps_32",
 })
 SAFE_ACTIONS = frozenset({
     "play", "stop", "record", "save", "undo", "redo",
@@ -90,6 +91,20 @@ def _validate_action_value(action: str, value: dict) -> str | None:
             return "value must be a float in [0.0, 1.0] for set_plugin_param"
         if not isinstance(v.get("param"), int):
             return "param must be an integer for set_plugin_param"
+    if action == "set_tempo":
+        if not (40 <= float(v.get("bpm", 0)) <= 280):
+            return "bpm must be 40–280"
+    if action == "load_sample":
+        if not v.get("path"):
+            return "path required"
+        if not isinstance(v.get("index", -1), int):
+            return "index must be int"
+    if action == "set_steps_32":
+        steps = v.get("steps", [])
+        if not isinstance(steps, list):
+            return "steps must be a list"
+        if any(not (0 <= int(s) <= 63) for s in steps):
+            return "step indices must be 0–63"
     return None
 
 
@@ -423,6 +438,17 @@ class FouriaHandler(BaseHTTPRequestHandler):
             p = self._read_json()
             if p is None: return
             return self._send(analyze_wav(str(p.get("path", ""))))
+        if path == "/api/analyze/eq":
+            p = self._read_json()
+            if p is None: return
+            wav_path = p.get("path", "")
+            if not wav_path:
+                return self._send({"ok": False, "error": "path required"}, 400)
+            spec = analyze_spectrum(wav_path)
+            if not spec.get("ok"):
+                return self._send(spec, 400)
+            eq = vocal_eq_params(spec)
+            return self._send({**spec, **eq})
         if path == "/api/mix-plan":
             p = self._read_json()
             if p is None: return
@@ -440,6 +466,22 @@ class FouriaHandler(BaseHTTPRequestHandler):
             if p is None: return
             index = rag.build_index()
             return self._send({"ok": True, "docs": len(index.get("docs", []))})
+
+        if path == "/api/beat":
+            p = self._read_json()
+            if p is None: return
+            text = "make a beat " + str(p.get("description", ""))
+            with STATE_LOCK:
+                project = FL_STATE.get("project", {})
+            plan = plan_request(text, project)
+            session_id = FL_STATE.get("session_id")
+            for act in plan.get("actions", []):
+                try:
+                    action_store.enqueue(act["action"], act.get("value", {}),
+                                        session_id, project.get("title", ""))
+                except Exception:
+                    pass
+            return self._send(plan)
 
         return self._send({"ok": False, "error": "not found"}, 404)
 

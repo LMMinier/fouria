@@ -24,6 +24,7 @@ _lock = threading.Lock()
 AUTO_APPROVE = frozenset({
     "play", "stop", "record", "save", "undo", "redo",
     "show_channel_rack", "show_mixer", "show_playlist", "show_piano_roll", "notify",
+    "set_tempo",
 })
 
 
