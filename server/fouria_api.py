@@ -536,6 +536,35 @@ class FouriaHandler(BaseHTTPRequestHandler):
                 latest = str(m.get("content", ""))
                 break
 
+        normalized = " ".join(latest.lower().split())
+        if normalized in {
+            "connect to fl", "connect to fl studio", "are you connected to fl",
+            "are you connected to fl studio", "check fl connection",
+        }:
+            with STATE_LOCK:
+                connected = bool(
+                    FL_STATE.get("last_seen")
+                    and time.time() - FL_STATE["last_seen"] < 8
+                )
+                bridge = FL_STATE.get("bridge_version")
+                project = dict(FL_STATE.get("project") or {})
+            if connected:
+                content = (
+                    f"Connected to FL Studio through bridge {bridge}. "
+                    f"Active project: {project.get('title') or 'untitled'}."
+                )
+            else:
+                content = (
+                    "Not connected to FL Studio. I will not claim control until FL is open "
+                    "and FOURIA AI Studio Assistant is active on an enabled MIDI input."
+                )
+            return self._send({
+                "ok": True,
+                "message": {"role": "assistant", "content": content},
+                "reply": content,
+                "fl_connected": connected,
+            })
+
         inferred_action = self._infer_fl_action(latest)
         queued_action   = None
         if inferred_action and payload.get("execute_fl", True):
