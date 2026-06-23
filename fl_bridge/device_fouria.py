@@ -23,12 +23,19 @@ def _load_token():
     t = os.environ.get("FOURIA_TOKEN", "")
     if t:
         return t
-    try:
-        token_file = os.path.join(os.path.dirname(__file__), "..", "data", "fouria.token")
-        with open(os.path.normpath(token_file), "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "fouria.token"),
+        os.path.join(os.path.dirname(__file__), "..", "data", "fouria.token"),
+    ]
+    for token_file in candidates:
+        try:
+            with open(os.path.normpath(token_file), "r", encoding="utf-8") as f:
+                token = f.read().strip()
+                if token:
+                    return token
+        except Exception:
+            pass
+    return ""
 
 FOURIA_TOKEN = _load_token()
 

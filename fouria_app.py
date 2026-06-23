@@ -1,178 +1,201 @@
-"""FOURIA Desktop App — single entry point.
-
-Double-click this (or the built EXE) to:
-  1. Start the FOURIA server in a background thread
-  2. Deploy the bridge to FL Studio MIDI scripts
-  3. Open the FOURIA native window (no browser needed)
-"""
+"""FOURIA Desktop App: one owner for FL, bridge, server, and UI."""
+import csv
+import json
 import os
-import sys
+import secrets
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 
-# ── Root resolution (works both as .py and as PyInstaller EXE) ───────────────
 if getattr(sys, "frozen", False):
-    # Running as compiled EXE — PyInstaller unpacks to _MEIPASS
     BUNDLE_DIR = Path(sys._MEIPASS)
-    APP_DIR    = Path(sys.executable).parent
+    APP_DIR = Path(sys.executable).parent
 else:
     BUNDLE_DIR = Path(__file__).resolve().parent
-    APP_DIR    = BUNDLE_DIR
+    APP_DIR = BUNDLE_DIR
 
 os.environ["FOURIA_ROOT"] = str(BUNDLE_DIR)
 os.environ["FOURIA_DESKTOP_EXECUTOR"] = "1"
 sys.path.insert(0, str(BUNDLE_DIR / "server"))
 
-PORT  = int(os.environ.get("FOURIA_PORT", "11700"))
-URL   = f"http://127.0.0.1:{PORT}"
+PORT = int(os.environ.get("FOURIA_PORT", "11700"))
+URL = f"http://127.0.0.1:{PORT}"
+LOG_FILE = APP_DIR / "FOURIA-startup.log"
 
 
-def _find_fl_studio() -> Path | None:
+def _log(message):
+    line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}"
+    try:
+        with LOG_FILE.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except Exception:
+        pass
+    print(line, flush=True)
+
+
+def _listener_pids():
+    pids = set()
+    try:
+        result = subprocess.run(
+            ["netstat", "-ano", "-p", "tcp"], capture_output=True, text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[1].endswith(f":{PORT}") and parts[3] == "LISTENING":
+                pids.add(int(parts[4]))
+    except Exception:
+        pass
+    return pids
+
+
+def _process_name(pid):
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        rows = list(csv.reader([result.stdout.strip()]))
+        return rows[0][0].lower() if rows and rows[0] else ""
+    except Exception:
+        return ""
+
+
+def _claim_server_port():
+    pids = _listener_pids() - {os.getpid()}
+    if not pids:
+        return
+    for pid in pids:
+        name = _process_name(pid)
+        if name not in {"python.exe", "pythonw.exe", "fouria.exe"}:
+            raise RuntimeError(f"Port {PORT} is occupied by {name or 'another app'} (PID {pid})")
+    for pid in pids:
+        name = _process_name(pid)
+        _log(f"stopping stale FOURIA server: {name} PID {pid}")
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    deadline = time.time() + 8
+    while (_listener_pids() - {os.getpid()}) and time.time() < deadline:
+        time.sleep(0.2)
+    remaining = _listener_pids() - {os.getpid()}
+    if remaining:
+        raise RuntimeError(f"Could not claim port {PORT}; remaining PIDs: {sorted(remaining)}")
+
+
+def _prepare_token():
+    data_dir = APP_DIR / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    token_file = data_dir / "fouria.token"
+    token = token_file.read_text(encoding="utf-8").strip() if token_file.exists() else ""
+    if not token:
+        token = secrets.token_hex(16)
+        token_file.write_text(token, encoding="utf-8")
+    os.environ["FOURIA_TOKEN"] = token
+    return token
+
+
+def _deploy_bridge(token):
+    src = BUNDLE_DIR / "fl_bridge" / "device_fouria.py"
+    dst = Path.home() / "Documents" / "Image-Line" / "FL Studio" / "Settings" / "Hardware" / "FOURIA"
+    dst.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst / "device_fouria.py")
+    (dst / "fouria.token").write_text(token, encoding="utf-8")
+    _log(f"bridge and matching token deployed to {dst}")
+
+
+def _fl_running():
+    result = subprocess.run(
+        ["tasklist", "/FI", "IMAGENAME eq FL64.exe"], capture_output=True, text=True,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    return "FL64.exe" in result.stdout
+
+
+def _launch_fl():
+    if _fl_running():
+        _log("FL Studio already running")
+        return
     configured = os.environ.get("FOURIA_FL_PATH", "").strip()
     candidates = [
         Path(configured) if configured else None,
         Path(r"C:\Program Files\Image-Line\FL Studio 21\FL64.exe"),
         Path(r"C:\Program Files\Image-Line\FL Studio 20\FL64.exe"),
     ]
-    return next((path for path in candidates if path and path.exists()), None)
-
-
-def _fl_is_running() -> bool:
-    try:
-        result = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq FL64.exe"],
-            capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        return "FL64.exe" in result.stdout
-    except Exception:
-        return False
-
-
-def _launch_fl_studio():
-    if _fl_is_running():
-        return
-    executable = _find_fl_studio()
-    if executable is None:
-        print("FOURIA: FL Studio was not found.", flush=True)
-        return
+    executable = next((path for path in candidates if path and path.exists()), None)
+    if not executable:
+        raise RuntimeError("FL Studio was not found")
     subprocess.Popen([str(executable)])
-    print(f"FOURIA: launched FL Studio -> {executable}", flush=True)
+    _log(f"launched FL Studio: {executable}")
 
-# ── Bridge auto-deploy ────────────────────────────────────────────────────────
-
-def _deploy_bridge():
-    src = BUNDLE_DIR / "fl_bridge" / "device_fouria.py"
-    dst_dir = Path.home() / "Documents" / "Image-Line" / "FL Studio" / "Settings" / "Hardware" / "FOURIA"
-    try:
-        dst_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst_dir / "device_fouria.py")
-        print(f"FOURIA: bridge deployed → {dst_dir}", flush=True)
-    except Exception as exc:
-        print(f"FOURIA: bridge deploy skipped ({exc})", flush=True)
-
-
-# ── Server launcher ───────────────────────────────────────────────────────────
 
 def _start_server():
-    import fouria_api
-    fouria_api.main()
+    try:
+        import fouria_api
+        fouria_api.main()
+    except Exception as exc:
+        _log(f"bundled server failed: {exc!r}")
 
 
-def _wait_for_server(timeout: int = 20) -> bool:
+def _wait_for_own_server(timeout=25):
     from urllib.request import urlopen
-    from urllib.error import URLError
     deadline = time.time() + timeout
+    expected = str(BUNDLE_DIR).lower()
     while time.time() < deadline:
         try:
-            urlopen(f"{URL}/health", timeout=1)
-            return True
+            data = json.loads(urlopen(f"{URL}/health", timeout=1).read())
+            if str(data.get("root", "")).lower() == expected:
+                return True
         except Exception:
-            time.sleep(0.15)
+            pass
+        time.sleep(0.2)
     return False
 
 
-# ── Splash (shown while server starts) ───────────────────────────────────────
+def _splash():
+    return """<!doctype html><html><body style="margin:0;background:#10100f;color:#f4f0e8;
+    display:flex;align-items:center;justify-content:center;height:100vh;font-family:Segoe UI">
+    <div style="text-align:center"><div style="font-size:48px;font-weight:900;color:#e7618d">
+    FOURIA</div><div style="margin-top:12px;color:#aaa39a">starting FL Studio and claiming control...</div>
+    </div></body></html>"""
 
-def _splash_html() -> str:
-    return """<!doctype html><html><head>
-<meta charset="utf-8">
-<style>
-  body { margin:0; background:#10100f; display:flex; flex-direction:column;
-         align-items:center; justify-content:center; height:100vh;
-         font-family:"Segoe UI",system-ui,sans-serif; color:#f4f0e8; }
-  .logo { font-size:48px; font-weight:900; letter-spacing:.18em;
-          background:linear-gradient(135deg,#e7618d,#d6a94a);
-          -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-  .sub  { margin-top:8px; font-size:13px; color:#aaa39a; letter-spacing:.12em; }
-  .bar  { margin-top:32px; width:220px; height:3px; background:#1e1e1c;
-          border-radius:99px; overflow:hidden; }
-  .fill { height:100%; width:30%; background:linear-gradient(90deg,#e7618d,#d6a94a);
-          border-radius:99px; animation:slide 1.2s ease-in-out infinite; }
-  @keyframes slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(433%)} }
-</style></head><body>
-<div class="logo">FOURIA</div>
-<div class="sub">FL Studio AI · starting up…</div>
-<div class="bar"><div class="fill"></div></div>
-</body></html>"""
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    # 1. Deploy bridge immediately
-    _deploy_bridge()
-
-    # 2. Launch the DAW this assistant controls.
-    _launch_fl_studio()
-
-    # 3. Start server thread
-    server_thread = threading.Thread(target=_start_server, daemon=True)
-    server_thread.start()
-
-    # 4. Launch native window
+    LOG_FILE.write_text("", encoding="utf-8")
+    _log(f"starting Desktop FOURIA from {APP_DIR}")
     try:
-        import webview
-    except ImportError:
-        print("pywebview not installed. Run: pip install pywebview", flush=True)
-        # Fallback: open browser
-        import webbrowser
-        if _wait_for_server():
-            webbrowser.open(URL)
-        else:
-            print("Server failed to start.", flush=True)
-        server_thread.join()
-        return
+        _claim_server_port()
+        token = _prepare_token()
+        _deploy_bridge(token)
+        _launch_fl()
+        threading.Thread(target=_start_server, daemon=True).start()
+    except Exception as exc:
+        _log(f"startup aborted: {exc!r}")
+        raise
 
-    # Show splash while server starts
+    import webview
     window = webview.create_window(
-        title      = "FOURIA  ·  FL Studio AI",
-        html       = _splash_html(),
-        width      = 1280,
-        height     = 860,
-        resizable  = True,
-        min_size   = (860, 600),
-        background_color = "#10100f",
+        "FOURIA  ·  FL Studio AI", html=_splash(), width=1280, height=860,
+        min_size=(860, 600), background_color="#10100f",
     )
 
-    def _on_ready():
-        # Wait for server, then navigate to the real UI
-        if _wait_for_server(timeout=25):
+    def ready():
+        if _wait_for_own_server():
+            _log("bundled server verified; loading UI")
             window.load_url(URL)
         else:
-            window.load_html("""<!doctype html><html><body style="background:#10100f;color:#e7618d;
-                font-family:sans-serif;display:flex;align-items:center;justify-content:center;
-                height:100vh;font-size:18px">Server failed to start. Check the console.</body></html>""")
+            _log("bundled server verification timed out")
+            window.load_html(
+                "<body style='background:#10100f;color:#e7618d;font:18px Segoe UI'>"
+                "FOURIA server failed. See Desktop/FOURIA-startup.log.</body>"
+            )
 
-    threading.Thread(target=_on_ready, daemon=True).start()
-
-    webview.start(
-        debug           = False,
-        private_mode    = False,
-        storage_path    = str(APP_DIR / "data" / "webview_cache"),
-    )
+    threading.Thread(target=ready, daemon=True).start()
+    webview.start(debug=False, private_mode=False, storage_path=str(APP_DIR / "data" / "webview_cache"))
 
 
 if __name__ == "__main__":
