@@ -10,6 +10,8 @@ CORPUS_DIR = ROOT / "data" / "corpus"
 INDEX_DIR  = ROOT / "data" / "index"
 INDEX_FILE = INDEX_DIR / "fouria_rag.json"
 
+_INDEX_CACHE: dict | None = None
+
 
 def _tokens(text: str) -> list[str]:
     return re.findall(r"[a-zA-Z0-9_']+", text.lower())
@@ -70,16 +72,24 @@ def build_index() -> dict:
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
     index = {"docs": raw_docs, "doc_freq": doc_freq, "total_docs": total}
     INDEX_FILE.write_text(json.dumps(index, indent=2), encoding="utf-8")
+    global _INDEX_CACHE
+    _INDEX_CACHE = index
     return index
 
 
 def load_index() -> dict:
+    global _INDEX_CACHE
+    if _INDEX_CACHE is not None:
+        return _INDEX_CACHE
     if not INDEX_FILE.exists():
-        return build_index()
+        _INDEX_CACHE = build_index()
+        return _INDEX_CACHE
     try:
-        return json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+        _INDEX_CACHE = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+        return _INDEX_CACHE
     except (json.JSONDecodeError, OSError):
-        return build_index()
+        _INDEX_CACHE = build_index()
+        return _INDEX_CACHE
 
 
 def search(query: str, limit: int = 5) -> list[dict]:

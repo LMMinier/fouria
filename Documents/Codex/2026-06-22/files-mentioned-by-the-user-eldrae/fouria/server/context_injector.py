@@ -40,9 +40,11 @@ def build_project_context(fl_state: dict) -> str:
     author = project.get("author") or ""
     genre  = project.get("genre") or ""
     state  = "playing" if project.get("playing") else "stopped"
+    tempo  = project.get("tempo")
     parts  = [f"Project: {title}"]
     if author: parts.append(f"by {author}")
     if genre:  parts.append(f"[{genre}]")
+    if tempo:  parts.append(f"{int(round(tempo))} BPM")
     parts.append(f"| {state}")
     lines.append("FL STUDIO PROJECT CONTEXT")
     lines.append(" — ".join(parts))

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FOURIA</title>
   <style>
-    :root { --bg:#10100f; --panel:rgba(24,24,22,.84); --ink:#f4f0e8; --muted:#aaa39a; --rose:#e7618d; --gold:#d6a94a; --line:rgba(255,255,255,.12); }
+    :root { --bg:#10100f; --panel:rgba(24,24,22,.84); --ink:#f4f0e8; --muted:#aaa39a; --rose:#e7618d; --gold:#d6a94a; --line:rgba(255,255,255,.12); --green:#4bc9a0; --warn:#d6a94a; }
     * { box-sizing:border-box; }
     body { margin:0; min-height:100vh; background:radial-gradient(circle at 72% 20%, rgba(231,97,141,.16), transparent 34%), radial-gradient(circle at 20% 70%, rgba(75,184,197,.12), transparent 30%), var(--bg); color:var(--ink); font:14px/1.5 "Segoe UI", system-ui, sans-serif; }
     .app { min-height:100vh; display:grid; grid-template-columns:minmax(310px,440px) minmax(360px,1fr); }
@@ -23,12 +23,49 @@
     .pulse { position:absolute; inset:18% 8% 3%; border:1px solid rgba(231,97,141,.28); border-radius:48%; animation:breathe 2.8s ease-in-out infinite; }
     .status { width:min(100%,340px); border:1px solid var(--line); background:var(--panel); border-radius:8px; padding:14px; margin-top:18px; }
     .status b { color:var(--rose); }
-    .main { display:grid; grid-template-rows:auto 1fr auto; min-height:100vh; padding:22px; gap:16px; }
-    .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .pill { border:1px solid var(--line); border-radius:999px; padding:8px 12px; color:var(--muted); background:rgba(255,255,255,.04); }
+    .main { display:grid; grid-template-rows:auto auto 1fr auto auto; min-height:100vh; padding:22px; gap:16px; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .pill { border:1px solid var(--line); border-radius:999px; padding:8px 12px; color:var(--muted); background:rgba(255,255,255,.04); white-space:nowrap; }
+    .badge { display:inline-block; background:var(--rose); color:#fff; border-radius:999px; font-size:10px; font-weight:800; padding:1px 6px; margin-left:6px; vertical-align:middle; }
+    /* Token input */
+    .token-bar { display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 14px; }
+    .token-bar label { color:var(--gold); font-size:11px; font-weight:800; letter-spacing:.12em; white-space:nowrap; }
+    .token-bar input { flex:1; background:#0b0b0a; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; font-size:13px; letter-spacing:.04em; }
+    .token-bar input:focus { outline:1px solid var(--rose); }
+    .token-prompt { background:rgba(231,97,141,.12); border:1px solid var(--rose); border-radius:8px; padding:14px; font-size:13px; color:var(--ink); }
+    .token-prompt code { color:var(--gold); font-size:12px; }
+    /* Chat */
     .chat { border:1px solid var(--line); border-radius:8px; background:var(--panel); overflow:auto; padding:16px; }
     .msg { max-width:850px; margin:0 0 14px; white-space:pre-wrap; }
     .msg.user { color:#d6f7fb; } .msg.fouria { color:var(--ink); }
+    /* Plan card */
+    .plan-card { background:rgba(214,169,74,.08); border:1px solid rgba(214,169,74,.35); border-radius:8px; padding:12px 14px; margin:8px 0 14px; }
+    .plan-card h4 { margin:0 0 8px; color:var(--gold); font-size:12px; letter-spacing:.1em; }
+    .plan-action { display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .plan-action:last-child { border-bottom:0; }
+    .plan-action .confirm-flag { font-size:10px; color:var(--rose); margin-left:auto; padding-right:8px; }
+    .plan-action .warn-flag { font-size:11px; color:var(--warn); }
+    /* Action queue */
+    .queue-section { border:1px solid var(--line); border-radius:8px; background:var(--panel); overflow:hidden; }
+    .queue-header { display:flex; align-items:center; gap:8px; padding:10px 14px; cursor:pointer; user-select:none; border-bottom:1px solid var(--line); }
+    .queue-header:hover { background:rgba(255,255,255,.04); }
+    .queue-header span { font-size:12px; font-weight:800; letter-spacing:.1em; color:var(--gold); }
+    .queue-body { padding:12px 14px; display:none; }
+    .queue-body.open { display:block; }
+    .action-card { background:rgba(255,255,255,.04); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:8px; display:flex; align-items:center; gap:10px; font-size:13px; }
+    .action-card .aname { font-weight:700; color:var(--rose); min-width:90px; }
+    .action-card .aval { color:var(--muted); flex:1; }
+    .action-card .ambig { font-size:11px; color:var(--warn); margin-right:4px; }
+    .btn-approve { background:var(--green); color:#000; border:0; border-radius:6px; padding:4px 12px; font-size:12px; font-weight:800; cursor:pointer; }
+    .btn-reject { background:rgba(255,255,255,.08); color:var(--muted); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+    .btn-sm { background:var(--rose); color:#fff; border:0; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:800; cursor:pointer; }
+    .results-section { margin-top:10px; }
+    .results-section h5 { color:var(--muted); font-size:11px; letter-spacing:.1em; margin:0 0 6px; }
+    .result-item { font-size:12px; padding:4px 0; border-bottom:1px solid var(--line); color:var(--muted); }
+    .result-item.ok { color:var(--green); }
+    .result-item.err { color:var(--rose); }
+    .empty-note { color:var(--muted); font-size:12px; font-style:italic; }
+    /* Composer */
     .composer { display:grid; grid-template-columns:1fr auto; gap:10px; margin-top:10px; }
     textarea { min-height:58px; resize:vertical; background:#0b0b0a; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:12px; font:inherit; }
     button { border:0; border-radius:8px; background:var(--rose); color:#fff; font-weight:800; padding:0 18px; cursor:pointer; }
@@ -51,8 +88,44 @@
       <div class="status"><div><b id="mood">focused</b></div><div id="state">waiting for FL Studio</div></div>
     </section>
     <main class="main">
-      <div class="topbar"><div class="pill">FL Studio producer brain</div><div class="pill" id="health">checking...</div></div>
+      <!-- Topbar -->
+      <div class="topbar">
+        <div class="pill">FL Studio producer brain</div>
+        <div class="pill" id="health">checking...</div>
+        <div class="pill" id="pending-badge" style="display:none">Pending <span class="badge" id="pending-count">0</span></div>
+      </div>
+
+      <!-- Token input -->
+      <div>
+        <div class="token-bar">
+          <label>FOURIA TOKEN</label>
+          <input type="password" id="token-input" placeholder="Paste your token from the server console..." autocomplete="off">
+        </div>
+        <div class="token-prompt" id="token-prompt" style="display:none; margin-top:8px;">
+          No token set. Check the server console for a line like: <code>FOURIA token: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code> and paste it above.
+        </div>
+      </div>
+
+      <!-- Chat -->
       <section class="chat" id="chat"></section>
+
+      <!-- Action Queue -->
+      <div class="queue-section" id="queue-section">
+        <div class="queue-header" onclick="toggleQueue()">
+          <span>ACTION QUEUE</span>
+          <span id="queue-badge" style="display:none"><span class="badge" id="queue-count">0</span> pending</span>
+          <span style="margin-left:auto; color:var(--muted); font-size:11px;" id="queue-toggle-label">show ▾</span>
+        </div>
+        <div class="queue-body" id="queue-body">
+          <div id="pending-list"><div class="empty-note">No pending actions.</div></div>
+          <div class="results-section">
+            <h5>RECENT RESULTS</h5>
+            <div id="results-list"><div class="empty-note">No recent results.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Composer -->
       <div>
         <div class="quick">
           <button onclick="quick('play')">Play FL</button><button onclick="quick('stop')">Stop FL</button><button onclick="quick('record')">Record</button>
@@ -65,40 +138,325 @@
     </main>
   </div>
   <script>
+    // ---- Token management ----
+    const tokenInput = document.getElementById('token-input');
+    const tokenPrompt = document.getElementById('token-prompt');
+    let _token = '';
+
+    function getToken() {
+      // URL param wins, then input, then localStorage
+      const params = new URLSearchParams(location.search);
+      if (params.get('token')) {
+        const t = params.get('token');
+        localStorage.setItem('fouria_token', t);
+        return t;
+      }
+      return tokenInput.value.trim() || localStorage.getItem('fouria_token') || '';
+    }
+
+    function initToken() {
+      const stored = localStorage.getItem('fouria_token') || '';
+      const params = new URLSearchParams(location.search);
+      const urlToken = params.get('token') || '';
+      const initial = urlToken || stored;
+      tokenInput.value = initial;
+      _token = initial;
+      tokenPrompt.style.display = initial ? 'none' : 'block';
+    }
+
+    tokenInput.addEventListener('input', () => {
+      _token = tokenInput.value.trim();
+      localStorage.setItem('fouria_token', _token);
+      tokenPrompt.style.display = _token ? 'none' : 'block';
+    });
+
+    // ---- Fetch helpers ----
+    function authHeaders() {
+      const t = getToken();
+      return { 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' };
+    }
+
+    async function apiFetch(path, opts = {}) {
+      const t = getToken();
+      if (!t) { throw new Error('NO_TOKEN'); }
+      opts.headers = Object.assign({}, authHeaders(), opts.headers || {});
+      return fetch(path, opts);
+    }
+
+    // ---- Chat ----
     const chat = document.getElementById('chat');
     const promptBox = document.getElementById('prompt');
     const avatar = document.getElementById('avatar');
-    function add(cls, text) { const div=document.createElement('div'); div.className='msg '+cls; div.textContent=text; chat.appendChild(div); chat.scrollTop=chat.scrollHeight; }
-    function talking(on) { avatar.classList.toggle('talking', !!on); }
-    async function refresh() {
-      try {
-        const h = await fetch('/health').then(r => r.json());
-        const connected = h.fl_studio && h.fl_studio.connected;
-        document.getElementById('health').textContent = h.model + (connected ? ' - FL connected' : ' - FL waiting');
-        document.getElementById('mood').textContent = connected ? 'ready' : 'focused';
-        document.getElementById('state').textContent = connected ? 'wired to FL Studio bridge' : 'open FL Studio and select FOURIA Bridge';
-      } catch { document.getElementById('health').textContent = 'offline'; }
+
+    function add(cls, text) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + cls;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
     }
-    async function ask(text) { promptBox.value=text; await send(); }
+
+    function talking(on) { avatar.classList.toggle('talking', !!on); }
+
+    // ---- Plan card rendering ----
+    function renderPlanCard(plan, ambiguousIds) {
+      if (!plan || !Array.isArray(plan)) return null;
+      const card = document.createElement('div');
+      card.className = 'plan-card';
+      const h = document.createElement('h4');
+      h.textContent = 'PROPOSED FL PLAN';
+      card.appendChild(h);
+      plan.forEach(action => {
+        const row = document.createElement('div');
+        row.className = 'plan-action';
+        const isAmbig = ambiguousIds && ambiguousIds.includes(action.id || action.action);
+        if (isAmbig) {
+          const w = document.createElement('span');
+          w.className = 'warn-flag';
+          w.textContent = '⚠ ';
+          row.appendChild(w);
+        }
+        const name = document.createElement('span');
+        name.style.cssText = 'font-weight:700; color:var(--rose); min-width:110px;';
+        name.textContent = action.action || action.type || '?';
+        row.appendChild(name);
+        const val = document.createElement('span');
+        val.style.cssText = 'color:var(--muted); flex:1; font-size:12px;';
+        const parts = [];
+        if (action.track !== undefined) parts.push('track ' + action.track);
+        if (action.value !== undefined) parts.push('value: ' + action.value);
+        if (action.channel !== undefined) parts.push('ch ' + action.channel);
+        val.textContent = parts.join(' | ') || JSON.stringify(action).slice(0,60);
+        row.appendChild(val);
+        if (action.requires_confirmation) {
+          const cf = document.createElement('span');
+          cf.className = 'confirm-flag';
+          cf.textContent = 'requires confirm';
+          row.appendChild(cf);
+        }
+        if (action.id) {
+          const btn = document.createElement('button');
+          btn.className = 'btn-sm';
+          btn.textContent = 'Approve';
+          btn.onclick = () => approvePlanAction(action.id, btn);
+          row.appendChild(btn);
+        }
+        card.appendChild(row);
+      });
+      return card;
+    }
+
+    async function approvePlanAction(id, btn) {
+      try {
+        btn.disabled = true; btn.textContent = '...';
+        const r = await apiFetch('/api/fl/action/' + id + '/approve', { method: 'POST' });
+        const d = await r.json();
+        btn.textContent = d.ok ? '✓' : '!err';
+      } catch (e) {
+        btn.textContent = 'err'; btn.disabled = false;
+      }
+    }
+
+    // ---- send / ask / quick ----
+    async function ask(text) { promptBox.value = text; await send(); }
+
     async function send() {
-      const text=promptBox.value.trim(); if(!text) return; promptBox.value=''; add('user','Mike: '+text);
-      const body={messages:[{role:'user',content:text}],options:{num_predict:600}};
+      const text = promptBox.value.trim();
+      if (!text) return;
+      const t = getToken();
+      if (!t) { add('fouria', 'FOURIA: Please enter your token above first.'); tokenPrompt.style.display = 'block'; return; }
+      promptBox.value = '';
+      add('user', 'Mike: ' + text);
+      const body = { messages: [{ role: 'user', content: text }], options: { num_predict: 600 } };
       talking(true);
       document.getElementById('state').textContent = 'thinking with the studio context';
-      try { const data=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()); add('fouria','FOURIA: '+((data.message&&data.message.content)||data.error||'No answer.')); }
-      catch { add('fouria','FOURIA: Server connection dropped.'); }
+      try {
+        const r = await apiFetch('/api/chat', { method: 'POST', body: JSON.stringify(body) });
+        if (r.status === 401) { add('fouria', 'FOURIA: Unauthorized — check your token.'); talking(false); return; }
+        const data = await r.json();
+        const msgText = (data.message && data.message.content) || data.error || 'No answer.';
+        add('fouria', 'FOURIA: ' + msgText);
+        // Render proposed plan if present
+        if (data.proposed_fl_plan && data.proposed_fl_plan.length) {
+          let ambigIds = [];
+          try {
+            const ar = await apiFetch('/api/fl/ambiguous');
+            const ad = await ar.json();
+            ambigIds = (ad.ambiguous || []).map(a => a.id || a.action);
+          } catch {}
+          const planCard = renderPlanCard(data.proposed_fl_plan, ambigIds);
+          if (planCard) { chat.appendChild(planCard); chat.scrollTop = chat.scrollHeight; }
+        }
+      } catch (e) {
+        if (e.message === 'NO_TOKEN') add('fouria', 'FOURIA: Enter your FOURIA token above.');
+        else add('fouria', 'FOURIA: Server connection dropped.');
+      }
       talking(false);
       refresh();
     }
+
     async function quick(action) {
+      const t = getToken();
+      if (!t) { add('fouria', 'FOURIA: Enter your token above first.'); return; }
       talking(true);
       document.getElementById('state').textContent = 'sending command to FL Studio';
-      const data=await fetch('/api/fl/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,value:null})}).then(r=>r.json());
-      add('fouria', data.ok ? `Queued ${action} for FL Studio.` : data.error); refresh();
+      try {
+        const r = await apiFetch('/api/fl/action', { method: 'POST', body: JSON.stringify({ action, value: null }) });
+        const data = await r.json();
+        add('fouria', data.ok ? 'Queued ' + action + ' for FL Studio.' : (data.error || 'Error'));
+      } catch (e) {
+        add('fouria', 'FOURIA: ' + (e.message === 'NO_TOKEN' ? 'Enter your token above.' : 'Error sending action.'));
+      }
+      refresh();
       window.setTimeout(() => talking(false), 450);
     }
-    promptBox.addEventListener('keydown', e => { if(e.key==='Enter' && e.ctrlKey) send(); });
-    setInterval(refresh,2500); refresh();
+
+    // ---- Action Queue ----
+    let queueOpen = false;
+    let dismissedIds = new Set();
+
+    function toggleQueue() {
+      queueOpen = !queueOpen;
+      document.getElementById('queue-body').classList.toggle('open', queueOpen);
+      document.getElementById('queue-toggle-label').textContent = queueOpen ? 'hide ▴' : 'show ▾';
+    }
+
+    async function approveAction(id, btn) {
+      try {
+        btn.disabled = true; btn.textContent = '...';
+        const r = await apiFetch('/api/fl/action/' + id + '/approve', { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          btn.textContent = '✓';
+          dismissedIds.add(id);
+          setTimeout(renderPendingList, 400);
+        } else { btn.textContent = 'err'; btn.disabled = false; }
+      } catch { btn.textContent = 'err'; btn.disabled = false; }
+    }
+
+    let _pendingActions = [];
+    let _ambiguousIds = [];
+
+    function renderPendingList() {
+      const container = document.getElementById('pending-list');
+      const visible = _pendingActions.filter(a => !dismissedIds.has(a.id));
+      // Update badge
+      const count = visible.length;
+      const countEl = document.getElementById('pending-count');
+      const qBadge = document.getElementById('queue-badge');
+      const topBadge = document.getElementById('pending-badge');
+      const topCount = document.getElementById('pending-count');
+      if (countEl) countEl.textContent = count;
+      if (qBadge) { qBadge.style.display = count ? 'inline' : 'none'; document.getElementById('queue-count').textContent = count; }
+      if (topBadge) { topBadge.style.display = count ? 'flex' : 'none'; }
+      if (count === 0) { container.innerHTML = '<div class="empty-note">No pending actions.</div>'; return; }
+      container.innerHTML = '';
+      visible.forEach(action => {
+        const card = document.createElement('div');
+        card.className = 'action-card';
+        const isAmbig = _ambiguousIds.includes(action.id || action.action);
+        if (isAmbig) {
+          const w = document.createElement('span');
+          w.className = 'ambig';
+          w.textContent = '⚠';
+          card.appendChild(w);
+        }
+        const name = document.createElement('span');
+        name.className = 'aname';
+        name.textContent = action.action || action.type || '?';
+        card.appendChild(name);
+        const val = document.createElement('span');
+        val.className = 'aval';
+        const parts = [];
+        if (action.track !== undefined) parts.push('track ' + action.track);
+        if (action.value !== undefined) parts.push('' + action.value);
+        if (action.channel !== undefined) parts.push('ch ' + action.channel);
+        val.textContent = parts.join(' | ') || JSON.stringify(action).slice(0,80);
+        card.appendChild(val);
+        const appBtn = document.createElement('button');
+        appBtn.className = 'btn-approve';
+        appBtn.textContent = 'Approve';
+        appBtn.onclick = () => approveAction(action.id, appBtn);
+        card.appendChild(appBtn);
+        const rejBtn = document.createElement('button');
+        rejBtn.className = 'btn-reject';
+        rejBtn.textContent = 'Dismiss';
+        rejBtn.onclick = () => { dismissedIds.add(action.id); renderPendingList(); };
+        card.appendChild(rejBtn);
+        container.appendChild(card);
+      });
+    }
+
+    function renderResults(results) {
+      const container = document.getElementById('results-list');
+      if (!results || !results.length) { container.innerHTML = '<div class="empty-note">No recent results.</div>'; return; }
+      container.innerHTML = '';
+      results.slice(-8).reverse().forEach(r => {
+        const item = document.createElement('div');
+        const ok = r.ok || r.status === 'ok' || r.success;
+        item.className = 'result-item ' + (ok ? 'ok' : 'err');
+        const label = r.action || r.type || '?';
+        const detail = r.message || r.error || (ok ? 'success' : 'failed');
+        item.textContent = (ok ? '✓ ' : '✗ ') + label + ' — ' + detail;
+        container.appendChild(item);
+      });
+    }
+
+    // ---- Refresh ----
+    async function refresh() {
+      // Health — no auth required
+      try {
+        const h = await fetch('/health').then(r => r.json());
+        const connected = h.fl_studio && h.fl_studio.connected;
+        document.getElementById('health').textContent = (h.model || 'FOURIA') + (connected ? ' - FL connected' : ' - FL waiting');
+        document.getElementById('mood').textContent = connected ? 'ready' : 'focused';
+        document.getElementById('state').textContent = connected ? 'wired to FL Studio bridge' : 'open FL Studio and select FOURIA Bridge';
+      } catch { document.getElementById('health').textContent = 'offline'; }
+
+      // Auth-gated endpoints — only poll if token present
+      const t = getToken();
+      if (!t) return;
+
+      // Pending actions
+      try {
+        const r = await apiFetch('/api/fl/status');
+        if (r.ok) {
+          const d = await r.json();
+          _pendingActions = d.pending || [];
+          // Update global top badge
+          const topBadge = document.getElementById('pending-badge');
+          const topCount = document.getElementById('pending-count');
+          const vis = _pendingActions.filter(a => !dismissedIds.has(a.id)).length;
+          if (topBadge) topBadge.style.display = vis ? 'flex' : 'none';
+          if (topCount) topCount.textContent = vis;
+          renderPendingList();
+        }
+      } catch {}
+
+      // Ambiguous
+      try {
+        const r = await apiFetch('/api/fl/ambiguous');
+        if (r.ok) {
+          const d = await r.json();
+          _ambiguousIds = (d.ambiguous || []).map(a => a.id || a.action);
+        }
+      } catch {}
+
+      // Results
+      try {
+        const r = await apiFetch('/api/fl/results');
+        if (r.ok) {
+          const d = await r.json();
+          renderResults(d.results || d);
+        }
+      } catch {}
+    }
+
+    promptBox.addEventListener('keydown', e => { if (e.key === 'Enter' && e.ctrlKey) send(); });
+    initToken();
+    setInterval(refresh, 2500);
+    refresh();
   </script>
 </body>
 </html>

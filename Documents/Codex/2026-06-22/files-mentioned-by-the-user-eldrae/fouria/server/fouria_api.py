@@ -61,6 +61,38 @@ SAFE_ACTIONS = frozenset({
 })
 ALLOWED_FL_ACTIONS = SAFE_ACTIONS | DESTRUCTIVE_ACTIONS
 
+
+def _validate_action_value(action: str, value: dict) -> str | None:
+    """Return an error string if the action/value pair is invalid, else None."""
+    if action not in ALLOWED_FL_ACTIONS:
+        return f"unknown action: {action!r}"
+    if action in SAFE_ACTIONS:
+        return None  # safe actions need no value validation
+    v = value or {}
+    idx = v.get("index")
+    if action.startswith("set_channel_") or action in ("mute_channel", "solo_channel", "select_channel", "route_channel", "quantize_channel", "set_steps"):
+        if not isinstance(idx, int) or idx < 0:
+            return f"index must be a non-negative integer for {action!r}"
+    if action.startswith("set_mixer_") or action in ("mute_mixer", "solo_mixer", "select_mixer", "route_mixer", "set_route_level"):
+        if not isinstance(idx, int) or idx < 0:
+            return f"index must be a non-negative integer for {action!r}"
+    if action == "set_channel_volume":
+        vol = v.get("volume")
+        if not isinstance(vol, (int, float)) or not (0.0 <= float(vol) <= 1.0):
+            return "volume must be a float in [0.0, 1.0]"
+    if action == "set_mixer_volume":
+        vol = v.get("volume")
+        if not isinstance(vol, (int, float)) or not (0.0 <= float(vol) <= 1.0):
+            return "volume must be a float in [0.0, 1.0]"
+    if action == "set_plugin_param":
+        val = v.get("value")
+        if not isinstance(val, (int, float)) or not (0.0 <= float(val) <= 1.0):
+            return "value must be a float in [0.0, 1.0] for set_plugin_param"
+        if not isinstance(v.get("param"), int):
+            return "param must be an integer for set_plugin_param"
+    return None
+
+
 FL_ACTION_LABELS = {
     "play": "playback", "stop": "stop", "record": "record",
     "save": "save project", "undo": "undo", "redo": "redo",
@@ -131,8 +163,9 @@ class FouriaHandler(BaseHTTPRequestHandler):
             return None
 
     def _queue_fl_action(self, action, value=None) -> dict | None:
-        """Enqueue an action into SQLite. Returns the action dict or None if unknown."""
-        if action not in ALLOWED_FL_ACTIONS:
+        """Enqueue an action into SQLite. Returns the action dict or None if unknown/invalid."""
+        err = _validate_action_value(action, value or {})
+        if err:
             return None
         with STATE_LOCK:
             sid = FL_STATE.get("session_id")
@@ -286,7 +319,11 @@ class FouriaHandler(BaseHTTPRequestHandler):
             p = self._read_json()
             if p is None: return
             action = str(p.get("action", ""))
-            item = self._queue_fl_action(action, p.get("value"))
+            value  = p.get("value") or {}
+            err    = _validate_action_value(action, value)
+            if err:
+                return self._send({"ok": False, "error": err}, 400)
+            item = self._queue_fl_action(action, value)
             if item is None:
                 return self._send({"ok": False, "error": "unsupported action"}, 400)
             return self._send({"ok": True, "action": item})
@@ -551,7 +588,7 @@ def main():
     server = ThreadingHTTPServer((BIND, PORT), FouriaHandler)
     print(f"FOURIA v0.2 listening at http://{BIND}:{PORT}", flush=True)
     print(f"Model:  {model_client.DEFAULT_MODEL}", flush=True)
-    print(f"Token:  {SESSION_TOKEN}", flush=True)
+    print(f"Token:  {SESSION_TOKEN}  ← paste into the FOURIA UI token field", flush=True)
     server.serve_forever()
 
 

@@ -13,6 +13,7 @@ logs/
 data/index/
 data/training/
 data/midi/*.mid
+data/fouria.db
 
 # OS
 .DS_Store

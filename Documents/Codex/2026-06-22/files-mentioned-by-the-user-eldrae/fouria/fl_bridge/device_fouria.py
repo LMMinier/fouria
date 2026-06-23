@@ -12,6 +12,7 @@ import json
 import os
 import time
 import uuid
+from typing import Optional
 from urllib.request import Request, urlopen
 
 FOURIA_URL    = "http://127.0.0.1:11700"
@@ -22,7 +23,7 @@ FOURIA_TOKEN = os.environ.get("FOURIA_TOKEN", "")
 
 # Stable session identity for this FL Studio launch.
 _BRIDGE_ID  = str(uuid.uuid4())
-_SESSION_ID = None
+_SESSION_ID = None  # type: Optional[int]
 
 _last_sync = 0.0
 
@@ -134,6 +135,7 @@ def _snapshot():
         "selected_channel":     _safe(lambda: channels.selectedChannel(1, 0, 1), -1),
         "selected_mixer_track": _safe(lambda: mixer.trackNumber(), -1),
         "current_pattern":      _safe(lambda: patterns.patternNumber(), -1),
+        "tempo":                _safe(lambda: general.getProjectTempo(), None),
         "channels":             channel_data,
         "mixer":                mixer_data,
     }
@@ -296,19 +298,22 @@ def _execute(item):
 
 # ── FL Studio lifecycle ───────────────────────────────────────────────────────
 
-def _register():
+def _register(attempts=5, delay=2.0):
     global _SESSION_ID
-    try:
-        snap         = _snapshot()
-        project_hash = snap.get("title") or ""
-        resp         = _post("/api/fl/register", {
-            "bridge_id":    _BRIDGE_ID,
-            "project_hash": project_hash,
-        }, timeout=5)
-        _SESSION_ID = resp.get("session_id")
-        print(f"FOURIA: registered session {_SESSION_ID}", flush=True)
-    except Exception as exc:
-        print(f"FOURIA: registration failed ({exc}); operating without session binding.", flush=True)
+    snap         = _snapshot()
+    project_hash = snap.get("title") or ""
+    payload      = {"bridge_id": _BRIDGE_ID, "project_hash": project_hash}
+    for attempt in range(1, attempts + 1):
+        try:
+            resp        = _post("/api/fl/register", payload, timeout=5)
+            _SESSION_ID = resp.get("session_id")
+            print(f"FOURIA: registered session {_SESSION_ID}", flush=True)
+            return
+        except Exception as exc:
+            if attempt < attempts:
+                time.sleep(delay)
+            else:
+                print(f"FOURIA: registration failed after {attempts} attempts ({exc}); operating without session binding.", flush=True)
 
 
 def OnInit():
