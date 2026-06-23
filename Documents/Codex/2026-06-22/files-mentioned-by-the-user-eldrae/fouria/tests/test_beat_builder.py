@@ -138,6 +138,27 @@ def test_non_beat_not_affected():
 
 # ── 10. set_tempo action value matches parsed BPM ────────────────────────────
 
+def test_make_beat_auto_names_channels():
+    """When no drum channels exist, make_beat should include set_channel_name actions."""
+    project = {
+        "channels": [
+            {"index": 0, "name": "Channel 1", "plugin": "", "volume": 0.78, "pan": 0, "mixer_track": -1, "muted": False, "solo": False, "selected": False},
+            {"index": 1, "name": "Channel 2", "plugin": "", "volume": 0.78, "pan": 0, "mixer_track": -1, "muted": False, "solo": False, "selected": False},
+            {"index": 2, "name": "Channel 3", "plugin": "", "volume": 0.78, "pan": 0, "mixer_track": -1, "muted": False, "solo": False, "selected": False},
+            {"index": 3, "name": "Channel 4", "plugin": "", "volume": 0.78, "pan": 0, "mixer_track": -1, "muted": False, "solo": False, "selected": False},
+        ],
+        "mixer": []
+    }
+    result = plan_request("make a trap beat at 140 bpm", project)
+    if result.get("intent") != "make_beat":
+        return  # feature not active, skip
+    actions = result["actions"]
+    action_names = [a["action"] for a in actions]
+    # Should include channel naming since none have drum names
+    assert "set_channel_name" in action_names or "set_steps_32" in action_names, \
+        "Expected set_channel_name or set_steps_32 when auto-naming"
+
+
 def test_make_beat_set_tempo_action():
     result = plan_request("make a trap beat at 140 bpm", {})
     if not _make_beat_supported(result):

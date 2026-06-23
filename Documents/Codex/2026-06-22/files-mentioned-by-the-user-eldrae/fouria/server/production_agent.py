@@ -1,7 +1,42 @@
 import re
 import sys
 import os
+from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
+
+# ── FL Studio default sample finder ─────────────────────────────────────────
+
+_FL_SAMPLE_ROOTS = [
+    Path(r"C:\Program Files\Image-Line\FL Studio 21\Data\Patches\Packs"),
+    Path(r"C:\Program Files\Image-Line\FL Studio 20\Data\Patches\Packs"),
+    Path(os.path.expanduser(r"~\Documents\Image-Line\FL Studio\Samples")),
+    Path(os.path.expanduser(r"~\Documents\Image-Line\Data\Patches\Packs")),
+]
+
+_ROLE_KEYWORDS = {
+    "kick":  ["kick", "bd", "bass drum", "bassdrum"],
+    "snare": ["snare", "sd", "rimshot"],
+    "hat":   ["hihat", "hi-hat", "hat", "hh", "cymbal"],
+    "808":   ["808", "sub bass", "subbass"],
+}
+
+
+def _find_fl_sample(role: str):
+    """Search FL Studio sample library for a sample matching the role.
+    Returns absolute path string or None if not found."""
+    keywords = _ROLE_KEYWORDS.get(role, [role])
+    for root in _FL_SAMPLE_ROOTS:
+        try:
+            if not root.exists():
+                continue
+            for ext in ("*.wav", "*.flac"):
+                for sample_path in root.rglob(ext):
+                    name_lower = sample_path.stem.lower()
+                    if any(kw in name_lower for kw in keywords):
+                        return str(sample_path)
+        except Exception:
+            continue
+    return None
 
 
 def _resolve_named(items, phrase):
@@ -90,6 +125,13 @@ def _find_channel(channels, *keywords):
     return None
 
 
+# Extended keyword sets for smarter drum channel detection
+_KICK_KEYWORDS  = ("kick", "bd", "bass drum", "bassdrum")
+_SNARE_KEYWORDS = ("snare", "sd", "rim", "rimshot")
+_HAT_KEYWORDS   = ("hat", "hihat", "hi-hat", "hi hat", "hh", "cymbal", "open", "closed")
+_808_KEYWORDS   = ("808", "sub bass", "subbass", "sub")
+
+
 def _make_beat(phrase, channels, notes):
     """Build the list of FL actions for the make_beat intent."""
     from midi_tools import generate_drum_808_spec, generate_chord_midi_spec, generate_midi_spec
@@ -97,8 +139,9 @@ def _make_beat(phrase, channels, notes):
     bpm, key, scale, bars, style = _parse_beat_params(phrase)
 
     actions = []
+    # Notify user immediately so they see FOURIA working
+    actions.append({"action": "notify", "value": f"FOURIA cooking a {style} beat in {key} {scale} at {bpm} BPM…"})
     actions.append({"action": "set_tempo", "value": {"bpm": bpm}})
-    actions.append({"action": "notify", "value": f"FOURIA beat builder running — {key} {scale} @ {bpm} BPM…"})
 
     # Drum patterns — 32-step
     DRUM_PATTERNS = {
@@ -108,40 +151,65 @@ def _make_beat(phrase, channels, notes):
         "open":  {"steps": [7, 15],        "length": 32},
     }
 
-    kick_ch   = _find_channel(channels, "kick")
-    snare_ch  = _find_channel(channels, "snare")
-    hat_ch    = _find_channel(channels, "hat", "hihat", "hi-hat", "hh", "hats")
+    kick_ch   = _find_channel(channels, *_KICK_KEYWORDS)
+    snare_ch  = _find_channel(channels, *_SNARE_KEYWORDS)
+    hat_ch    = _find_channel(channels, *_HAT_KEYWORDS)
     open_ch   = _find_channel(channels, "open", "o hat", "open hat")
 
-    if kick_ch:
-        actions.append({"action": "set_steps_32", "value": {
-            "index": kick_ch["index"], "steps": DRUM_PATTERNS["kick"]["steps"],
-            "length": DRUM_PATTERNS["kick"]["length"],
-        }})
+    # Auto-setup: if no recognizable drum channels found, name channels 0-3
+    if not kick_ch and not snare_ch and not hat_ch:
+        drum_setup = [
+            (0, "Kick"),
+            (1, "Snare"),
+            (2, "Hi-Hat"),
+            (3, "808"),
+        ]
+        for ch_idx, ch_name in drum_setup:
+            if any(c["index"] == ch_idx for c in channels):
+                actions.append({"action": "set_channel_name", "value": {"index": ch_idx, "name": ch_name}})
+        # Try to load default FL samples
+        for ch_idx, role in [(0, "kick"), (1, "snare"), (2, "hat"), (3, "808")]:
+            if any(c["index"] == ch_idx for c in channels):
+                sample = _find_fl_sample(role)
+                if sample:
+                    actions.append({"action": "load_sample", "value": {"index": ch_idx, "path": sample}})
+                    notes.append(f"Loaded {role} sample: {Path(sample).name}")
+        # Write step patterns to indices 0-3
+        actions.append({"action": "set_steps_32", "value": {"index": 0, "steps": [0, 8, 10, 14], "length": 16}})
+        actions.append({"action": "set_steps_32", "value": {"index": 1, "steps": [4, 12], "length": 16}})
+        actions.append({"action": "set_steps_32", "value": {"index": 2, "steps": list(range(16)), "length": 16}})
+        actions.append({"action": "set_steps_32", "value": {"index": 3, "steps": [0, 6, 12], "length": 16}})
+        notes.append("Channels 0-3 renamed to Kick/Snare/Hi-Hat/808. Load your preferred samples into them.")
     else:
-        notes.append("No channel named 'Kick' found — rename a channel to 'Kick' for auto-pattern write.")
+        if kick_ch:
+            actions.append({"action": "set_steps_32", "value": {
+                "index": kick_ch["index"], "steps": DRUM_PATTERNS["kick"]["steps"],
+                "length": DRUM_PATTERNS["kick"]["length"],
+            }})
+        else:
+            notes.append("No kick channel found — auto-naming skipped because other drum channels exist.")
 
-    if snare_ch:
-        actions.append({"action": "set_steps_32", "value": {
-            "index": snare_ch["index"], "steps": DRUM_PATTERNS["snare"]["steps"],
-            "length": DRUM_PATTERNS["snare"]["length"],
-        }})
-    else:
-        notes.append("No channel named 'Snare' found — rename a channel to 'Snare' for auto-pattern write.")
+        if snare_ch:
+            actions.append({"action": "set_steps_32", "value": {
+                "index": snare_ch["index"], "steps": DRUM_PATTERNS["snare"]["steps"],
+                "length": DRUM_PATTERNS["snare"]["length"],
+            }})
+        else:
+            notes.append("No snare channel found.")
 
-    if hat_ch:
-        actions.append({"action": "set_steps_32", "value": {
-            "index": hat_ch["index"], "steps": DRUM_PATTERNS["hat"]["steps"],
-            "length": DRUM_PATTERNS["hat"]["length"],
-        }})
-    else:
-        notes.append("No channel named 'Hat'/'Hats'/'HiHat' found — rename for auto-pattern write.")
+        if hat_ch:
+            actions.append({"action": "set_steps_32", "value": {
+                "index": hat_ch["index"], "steps": DRUM_PATTERNS["hat"]["steps"],
+                "length": DRUM_PATTERNS["hat"]["length"],
+            }})
+        else:
+            notes.append("No hat channel found.")
 
-    if open_ch and open_ch != hat_ch:
-        actions.append({"action": "set_steps_32", "value": {
-            "index": open_ch["index"], "steps": DRUM_PATTERNS["open"]["steps"],
-            "length": DRUM_PATTERNS["open"]["length"],
-        }})
+        if open_ch and open_ch != hat_ch:
+            actions.append({"action": "set_steps_32", "value": {
+                "index": open_ch["index"], "steps": DRUM_PATTERNS["open"]["steps"],
+                "length": DRUM_PATTERNS["open"]["length"],
+            }})
 
     # Generate MIDI files
     try:

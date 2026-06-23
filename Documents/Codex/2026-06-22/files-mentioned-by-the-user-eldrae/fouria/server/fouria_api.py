@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlsplit
 import action_store
 import model_client
 import rag
+from orchestrator import TOOLS, handle_tool, tool_names
 from audio_tools import analyze_spectrum, analyze_wav, master_plan, mix_plan, vocal_eq_params
 from capabilities import report as capability_report
 from context_injector import build_project_context
@@ -537,14 +538,63 @@ class FouriaHandler(BaseHTTPRequestHandler):
             if isinstance(m, dict) and m.get("role") in {"user", "assistant"}
         )
         try:
-            data = model_client.chat(
+            resp = model_client.chat_with_tools(
                 ollama_msgs,
-                model   = payload.get("model") or model_client.DEFAULT_MODEL,
-                options = payload.get("options") or {"num_predict": 650},
+                TOOLS,
+                model=payload.get("model") or model_client.DEFAULT_MODEL,
             )
         except RuntimeError as exc:
             return self._send({"ok": False, "error": str(exc)}, 502)
 
+        msg        = resp.get("message", {})
+        tool_calls = msg.get("tool_calls", [])
+
+        if tool_calls:
+            call      = tool_calls[0]
+            fn        = call.get("function", {})
+            tool_name = fn.get("name", "")
+            tool_args = fn.get("arguments", {})
+            if isinstance(tool_args, str):
+                try:
+                    tool_args = json.loads(tool_args)
+                except Exception:
+                    tool_args = {}
+
+            with STATE_LOCK:
+                project = FL_STATE.get("project", {})
+
+            tool_result = handle_tool(tool_name, tool_args, project)
+
+            session_id = FL_STATE.get("session_id")
+            for act in tool_result.get("actions", []):
+                try:
+                    action_store.enqueue(act["action"], act.get("value", {}), session_id, project.get("title", ""))
+                except Exception:
+                    pass
+
+            summary_messages = ollama_msgs + [
+                {"role": "assistant", "content": "", "tool_calls": tool_calls},
+                {"role": "tool", "name": tool_name, "content": json.dumps(tool_result, ensure_ascii=False)},
+            ]
+            try:
+                summary = model_client.chat(summary_messages)
+            except RuntimeError as exc:
+                return self._send({"ok": False, "error": str(exc)}, 502)
+
+            reply_text = summary.get("message", {}).get("content", "Done.")
+
+            return self._send({
+                "ok":               True,
+                "reply":            reply_text,
+                "message":          {"role": "assistant", "content": reply_text},
+                "tool_used":        tool_name,
+                "tool_result":      tool_result,
+                "proposed_fl_plan": tool_result if tool_result.get("actions") else None,
+                "fouria_context_used": bool(project_ctx or rag_ctx),
+            })
+
+        # ── No tool_calls — plain text path (existing behaviour) ──────────────
+        data = resp
         data["ok"]                  = True
         data["fouria_context_used"] = bool(project_ctx or rag_ctx)
 
