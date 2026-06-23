@@ -203,9 +203,21 @@ class FouriaHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
 
-        # Public endpoints
+        # Public endpoints — UI is served with token pre-injected so no manual copy-paste needed
         if path in ("/", "/index.html"):
-            return self._send_file(ROOT / "ui" / "index.html", "text/html; charset=utf-8")
+            ui_file = ROOT / "ui" / "index.html"
+            if not ui_file.exists():
+                return self._send({"ok": False, "error": "UI not found"}, 404)
+            html = ui_file.read_text(encoding="utf-8")
+            inject = f'<script>window.FOURIA_TOKEN={json.dumps(SESSION_TOKEN)};window.FOURIA_AUTO=true;</script>'
+            html = html.replace("</head>", inject + "\n</head>", 1)
+            body = html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1:11700")
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
         if path == "/health":
             with STATE_LOCK:
@@ -585,10 +597,13 @@ def main():
     action_store.init_db()
     (ROOT / "data" / "corpus").mkdir(parents=True, exist_ok=True)
     (ROOT / "data" / "midi").mkdir(parents=True, exist_ok=True)
+    token_file = ROOT / "data" / "fouria.token"
+    token_file.parent.mkdir(parents=True, exist_ok=True)
+    token_file.write_text(SESSION_TOKEN, encoding="utf-8")
     server = ThreadingHTTPServer((BIND, PORT), FouriaHandler)
     print(f"FOURIA v0.2 listening at http://{BIND}:{PORT}", flush=True)
     print(f"Model:  {model_client.DEFAULT_MODEL}", flush=True)
-    print(f"Token:  {SESSION_TOKEN}  ← paste into the FOURIA UI token field", flush=True)
+    print(f"Token:  {SESSION_TOKEN}", flush=True)
     server.serve_forever()
 
 

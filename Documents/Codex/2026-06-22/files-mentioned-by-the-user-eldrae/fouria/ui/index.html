@@ -144,7 +144,8 @@
     let _token = '';
 
     function getToken() {
-      // URL param wins, then input, then localStorage
+      // Server-injected token wins, then URL param, then input, then localStorage
+      if (window.FOURIA_TOKEN) return window.FOURIA_TOKEN;
       const params = new URLSearchParams(location.search);
       if (params.get('token')) {
         const t = params.get('token');
@@ -155,6 +156,14 @@
     }
 
     function initToken() {
+      // If server injected token, hide the whole token bar
+      if (window.FOURIA_AUTO && window.FOURIA_TOKEN) {
+        const bar = document.querySelector('.token-bar');
+        if (bar) bar.style.display = 'none';
+        if (tokenPrompt) tokenPrompt.style.display = 'none';
+        _token = window.FOURIA_TOKEN;
+        return;
+      }
       const stored = localStorage.getItem('fouria_token') || '';
       const params = new URLSearchParams(location.search);
       const urlToken = params.get('token') || '';

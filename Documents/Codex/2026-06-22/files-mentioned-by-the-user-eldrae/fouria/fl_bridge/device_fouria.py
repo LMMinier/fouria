@@ -18,8 +18,19 @@ from urllib.request import Request, urlopen
 FOURIA_URL    = "http://127.0.0.1:11700"
 BRIDGE_VERSION = "2.0.0"
 
-# Token must match FOURIA_TOKEN env var on the server (or server's printed startup token).
-FOURIA_TOKEN = os.environ.get("FOURIA_TOKEN", "")
+# Token: prefer env var, then read from data/fouria.token written by the server at startup.
+def _load_token():
+    t = os.environ.get("FOURIA_TOKEN", "")
+    if t:
+        return t
+    try:
+        token_file = os.path.join(os.path.dirname(__file__), "..", "data", "fouria.token")
+        with open(os.path.normpath(token_file), "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+FOURIA_TOKEN = _load_token()
 
 # Stable session identity for this FL Studio launch.
 _BRIDGE_ID  = str(uuid.uuid4())
