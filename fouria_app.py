@@ -8,6 +8,7 @@ Double-click this (or the built EXE) to:
 import os
 import sys
 import shutil
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -26,6 +27,38 @@ sys.path.insert(0, str(BUNDLE_DIR / "server"))
 
 PORT  = int(os.environ.get("FOURIA_PORT", "11700"))
 URL   = f"http://127.0.0.1:{PORT}"
+
+
+def _find_fl_studio() -> Path | None:
+    configured = os.environ.get("FOURIA_FL_PATH", "").strip()
+    candidates = [
+        Path(configured) if configured else None,
+        Path(r"C:\Program Files\Image-Line\FL Studio 21\FL64.exe"),
+        Path(r"C:\Program Files\Image-Line\FL Studio 20\FL64.exe"),
+    ]
+    return next((path for path in candidates if path and path.exists()), None)
+
+
+def _fl_is_running() -> bool:
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq FL64.exe"],
+            capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        return "FL64.exe" in result.stdout
+    except Exception:
+        return False
+
+
+def _launch_fl_studio():
+    if _fl_is_running():
+        return
+    executable = _find_fl_studio()
+    if executable is None:
+        print("FOURIA: FL Studio was not found.", flush=True)
+        return
+    subprocess.Popen([str(executable)])
+    print(f"FOURIA: launched FL Studio -> {executable}", flush=True)
 
 # ── Bridge auto-deploy ────────────────────────────────────────────────────────
 
@@ -91,11 +124,14 @@ def main():
     # 1. Deploy bridge immediately
     _deploy_bridge()
 
-    # 2. Start server thread
+    # 2. Launch the DAW this assistant controls.
+    _launch_fl_studio()
+
+    # 3. Start server thread
     server_thread = threading.Thread(target=_start_server, daemon=True)
     server_thread.start()
 
-    # 3. Launch native window
+    # 4. Launch native window
     try:
         import webview
     except ImportError:
