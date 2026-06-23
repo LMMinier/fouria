@@ -28,6 +28,8 @@ from orchestrator import TOOLS, handle_tool, tool_names
 from audio_tools import analyze_spectrum, analyze_wav, master_plan, mix_plan, vocal_eq_params
 from capabilities import report as capability_report
 from context_injector import build_project_context
+import library_index as _lib_mod
+from library_index import build_library_index, load_library_index, find_sample, library_context_block
 from midi_tools import (
     analyze_midi, chord_progression_spec,
     generate_chord_midi_spec, generate_drum_808_spec, generate_midi_spec,
@@ -36,6 +38,8 @@ from persona import FOURIA_SYSTEM
 from production_agent import plan_request
 
 ROOT  = Path(os.environ.get("FOURIA_ROOT", Path(__file__).resolve().parents[1]))
+_LIBRARY_INDEX_PATH = ROOT / "data" / "library_index.json"
+_LIBRARY_INDEX: dict = {}
 PORT  = int(os.environ.get("FOURIA_PORT", "11700"))
 BIND  = os.environ.get("FOURIA_BIND", "127.0.0.1")
 
@@ -56,10 +60,12 @@ DESTRUCTIVE_ACTIONS = frozenset({
     "set_plugin_mix", "set_plugin_param", "next_preset", "previous_preset",
     "set_pattern_name", "select_pattern", "set_playlist_name", "mute_playlist", "solo_playlist",
     "set_tempo", "load_sample", "set_channel_color", "set_pattern_length", "set_steps_32",
+    "set_playlist_track_color", "clone_pattern", "set_pattern_color", "randomize_preset",
 })
 SAFE_ACTIONS = frozenset({
     "play", "stop", "record", "save", "undo", "redo",
     "show_channel_rack", "show_mixer", "show_playlist", "show_piano_roll", "notify",
+    "render", "toggle_record_mode", "jump_to_start", "jump_to_end", "tempo_tap",
 })
 ALLOWED_FL_ACTIONS = SAFE_ACTIONS | DESTRUCTIVE_ACTIONS
 
@@ -305,6 +311,9 @@ class FouriaHandler(BaseHTTPRequestHandler):
         if path == "/api/capabilities":
             return self._send(capability_report())
 
+        if path == "/api/library":
+            return self._send({"ok": True, "sample_count": _LIBRARY_INDEX.get("sample_count", 0), "preset_count": _LIBRARY_INDEX.get("preset_count", 0), "role_counts": _LIBRARY_INDEX.get("role_counts", {}), "fl_install": _LIBRARY_INDEX.get("fl_install")})
+
         return self._send({"ok": False, "error": "not found"}, 404)
 
     def do_POST(self):
@@ -468,6 +477,15 @@ class FouriaHandler(BaseHTTPRequestHandler):
             index = rag.build_index()
             return self._send({"ok": True, "docs": len(index.get("docs", []))})
 
+        if path == "/api/library/rescan":
+            global _LIBRARY_INDEX
+            try:
+                _LIBRARY_INDEX = build_library_index(_LIBRARY_INDEX_PATH)
+                _lib_mod.set_active_index(_LIBRARY_INDEX)
+                return self._send({"ok": True, "sample_count": _LIBRARY_INDEX["sample_count"], "preset_count": _LIBRARY_INDEX["preset_count"], "role_counts": _LIBRARY_INDEX["role_counts"]})
+            except Exception as exc:
+                return self._send({"ok": False, "error": str(exc)}, 500)
+
         if path == "/api/beat":
             p = self._read_json()
             if p is None: return
@@ -526,11 +544,14 @@ class FouriaHandler(BaseHTTPRequestHandler):
             fl_snapshot = dict(FL_STATE)
         project_ctx = build_project_context(fl_snapshot)
         rag_ctx     = rag.context_block(latest)
+        lib_ctx     = library_context_block(_LIBRARY_INDEX)
         system      = FOURIA_SYSTEM
         if project_ctx:
             system += "\n\n" + project_ctx
         if rag_ctx:
             system += "\n\n" + rag_ctx
+        if lib_ctx:
+            system += "\n\n" + lib_ctx
 
         ollama_msgs = [{"role": "system", "content": system}]
         ollama_msgs.extend(
@@ -554,6 +575,7 @@ class FouriaHandler(BaseHTTPRequestHandler):
             fn        = call.get("function", {})
             tool_name = fn.get("name", "")
             tool_args = fn.get("arguments", {})
+            print(f"FOURIA orchestrator: tool_calls → {tool_name}({json.dumps(tool_args, ensure_ascii=False)[:120]})", flush=True)
             if isinstance(tool_args, str):
                 try:
                     tool_args = json.loads(tool_args)
@@ -594,6 +616,7 @@ class FouriaHandler(BaseHTTPRequestHandler):
             })
 
         # ── No tool_calls — plain text path (existing behaviour) ──────────────
+        print(f"FOURIA orchestrator: plain-text path (intent parsing)", flush=True)
         data = resp
         data["ok"]                  = True
         data["fouria_context_used"] = bool(project_ctx or rag_ctx)
@@ -686,7 +709,23 @@ class FouriaHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    global _LIBRARY_INDEX
     action_store.init_db()
+    _LIBRARY_INDEX = load_library_index(_LIBRARY_INDEX_PATH)
+    if not _LIBRARY_INDEX:
+        print("FOURIA: scanning your FL Studio library (first run)…", flush=True)
+        try:
+            _LIBRARY_INDEX = build_library_index(_LIBRARY_INDEX_PATH)
+            print(f"FOURIA: library indexed — {_LIBRARY_INDEX['sample_count']} samples, {_LIBRARY_INDEX['preset_count']} presets.", flush=True)
+        except Exception as exc:
+            print(f"FOURIA: library scan failed ({exc}); continuing without library index.", flush=True)
+            _LIBRARY_INDEX = {}
+    else:
+        print(f"FOURIA: library index loaded — {_LIBRARY_INDEX.get('sample_count', 0)} samples.", flush=True)
+    _lib_mod.set_active_index(_LIBRARY_INDEX)
+    from model_client import resolve_tool_model, DEFAULT_MODEL, TOOL_CAPABLE_MODEL  # noqa: F401
+    tool_model = resolve_tool_model()
+    print(f"Orchestration model: {tool_model}", flush=True)
     (ROOT / "data" / "corpus").mkdir(parents=True, exist_ok=True)
     (ROOT / "data" / "midi").mkdir(parents=True, exist_ok=True)
     token_file = ROOT / "data" / "fouria.token"

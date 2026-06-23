@@ -4,6 +4,64 @@ import os
 from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
+# ── Synonym / slang expander ─────────────────────────────────────────────────
+
+_SYNONYMS = {
+    # beat making
+    "cook":         "make",
+    "sauté":        "make",
+    "whip":         "make",
+    "knock":        "beat",
+    "banger":       "beat",
+    "flip":         "make",
+    "vibe":         "beat",
+    "type beat":    "beat",
+    "pack":         "beat",
+    # tempo
+    "tempo":        "bpm",
+    "speed":        "bpm",
+    "rate":         "bpm",
+    # volume
+    "bump up":      "increase volume",
+    "bring up":     "increase volume",
+    "push up":      "increase volume",
+    "pull back":    "decrease volume",
+    "bring down":   "decrease volume",
+    "turn up":      "increase volume",
+    "turn down":    "decrease volume",
+    "louder":       "increase volume",
+    "quieter":      "decrease volume",
+    "softer":       "decrease volume",
+    # mixing
+    "muddy":        "low_mid excess",
+    "boxy":         "low_mid excess",
+    "harsh":        "upper_mid excess",
+    "thin":         "low deficit",
+    "boomy":        "low excess",
+    "bright":       "presence boost",
+    "dark":         "high cut",
+    "airy":         "air boost",
+    # channel operations
+    "silence":      "mute",
+    "quiet":        "mute",
+    "unmute":       "unmute",
+    "bring in":     "unmute",
+    "isolate":      "solo",
+    "hear only":    "solo",
+    # general
+    "fix":          "organize",
+    "clean":        "organize",
+    "tidy":         "organize",
+    "set up":       "organize",
+}
+
+
+def _normalize(phrase: str) -> str:
+    p = phrase.lower()
+    for slang, canonical in _SYNONYMS.items():
+        p = p.replace(slang, canonical)
+    return p
+
 # ── FL Studio default sample finder ─────────────────────────────────────────
 
 _FL_SAMPLE_ROOTS = [
@@ -21,9 +79,27 @@ _ROLE_KEYWORDS = {
 }
 
 
-def _find_fl_sample(role: str):
+def _find_fl_sample(role: str, library_index: dict | None = None) -> str | None:
     """Search FL Studio sample library for a sample matching the role.
+    Checks pre-built library index first (fast), then falls back to filesystem search.
     Returns absolute path string or None if not found."""
+    # Try library index first (fast, pre-scanned)
+    idx = library_index
+    if idx is None:
+        try:
+            from library_index import get_active_index
+            idx = get_active_index()
+        except Exception:
+            idx = {}
+    if idx:
+        try:
+            from library_index import find_sample
+            result = find_sample(role, idx)
+            if result:
+                return result
+        except Exception:
+            pass
+    # Fall back to filesystem search
     keywords = _ROLE_KEYWORDS.get(role, [role])
     for root in _FL_SAMPLE_ROOTS:
         try:
@@ -49,6 +125,12 @@ def _resolve_named(items, phrase):
     return max(matches, key=lambda item: len(str(item.get("name", ""))), default=None)
 
 
+def _safe_int_match(phrase):
+    """Return the first integer found in phrase as a string, or None."""
+    m = re.search(r'\b(\d+)\b', phrase)
+    return m.group(1) if m else None
+
+
 def _pan_value(phrase):
     """Return a pan float from phrase modifiers."""
     if any(w in phrase for w in ("hard", "full", "100%", "all the way")):
@@ -66,10 +148,35 @@ _BEAT_TRIGGERS = (
     "create a beat", "cook a beat", "generate a beat",
     # also catch "make me a dark trap beat", "make a hard beat", etc.
     "make me a", "make a",
+    # expanded slang triggers (applied after _normalize, but also match raw phrases)
+    "cook up", "whip up", "knock me a", "flip me a", "run me a",
+    "put together a", "let me hear a", "give me a beat", "drop a beat",
+    "make something",
 )
 
 # Require "beat" somewhere in phrase when using the broad triggers
-_BROAD_BEAT_TRIGGERS = {"make me a", "make a"}
+_BROAD_BEAT_TRIGGERS = {
+    "make me a", "make a",
+    "cook up", "whip up", "knock me a", "flip me a", "run me a",
+    "put together a", "let me hear a", "make something",
+}
+
+
+def _volume_delta(phrase):
+    """Return a volume delta (positive or negative) from phrase."""
+    if "increase volume" in phrase or "turn up" in phrase:
+        if any(w in phrase for w in ("a lot", "much", "way")):
+            return 0.15
+        if any(w in phrase for w in ("little", "bit", "slightly", "subtle")):
+            return 0.05
+        return 0.10
+    if "decrease volume" in phrase or "turn down" in phrase:
+        if any(w in phrase for w in ("a lot", "much", "way")):
+            return -0.15
+        if any(w in phrase for w in ("little", "bit", "slightly", "subtle")):
+            return -0.05
+        return -0.10
+    return None
 
 
 
@@ -251,7 +358,8 @@ def _make_beat(phrase, channels, notes):
 
 
 def plan_request(text, project):
-    phrase   = " ".join(str(text or "").lower().split())
+    raw_phrase = " ".join(str(text or "").lower().split())
+    phrase     = _normalize(raw_phrase)
     channels = project.get("channels") or []
     mixer    = project.get("mixer")    or []
     actions, notes = [], []
@@ -315,6 +423,14 @@ def plan_request(text, project):
                             }})
             intent = "mixer_edit"
 
+        delta = _volume_delta(phrase)
+        if delta is not None and not number:
+            current = float(mixer_target.get("volume", 0.75))
+            new_vol = max(0.0, min(1.0, current + delta))
+            actions.append({"action": "set_mixer_volume",
+                            "value": {"index": mixer_target["index"], "volume": new_vol}})
+            intent = "mixer_edit"
+
     if channel_target:
         if "quantize" in phrase:
             actions.append({"action": "quantize_channel",
@@ -330,6 +446,23 @@ def plan_request(text, project):
             actions.append({"action": "solo_channel",
                             "value": {"index": channel_target["index"], "enabled": True}})
             intent = "channel_edit"
+
+    # ── Render / export ──────────────────────────────────────────────────────
+    if any(w in phrase for w in ("render", "export", "bounce", "export the song", "mixdown")):
+        actions.append({"action": "render", "value": {}})
+        notes.append("Opens FL Studio's export dialog. Configure file name and format in the dialog.")
+        intent = "render"
+
+    # ── Jump to start ────────────────────────────────────────────────────────
+    if any(w in phrase for w in ("go to start", "rewind", "back to start", "beginning")):
+        actions.append({"action": "jump_to_start", "value": {}})
+        intent = "transport"
+
+    # ── Clone / duplicate pattern ─────────────────────────────────────────────
+    if "clone pattern" in phrase or "duplicate pattern" in phrase:
+        pat_idx = int(_safe_int_match(phrase) or 0)
+        actions.append({"action": "clone_pattern", "value": {"index": pat_idx}})
+        intent = "pattern_edit"
 
     # ── Window commands (always append if mentioned) ─────────────────────────
     if "open mixer" in phrase:

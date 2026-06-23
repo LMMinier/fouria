@@ -25,6 +25,7 @@ AUTO_APPROVE = frozenset({
     "play", "stop", "record", "save", "undo", "redo",
     "show_channel_rack", "show_mixer", "show_playlist", "show_piano_roll", "notify",
     "set_tempo",
+    "render", "toggle_record_mode", "jump_to_start", "jump_to_end", "tempo_tap",
 })
 
 

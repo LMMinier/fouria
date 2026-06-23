@@ -15,6 +15,7 @@ data/training/
 data/midi/*.mid
 data/fouria.db
 data/fouria.token
+data/library_index.json
 
 # OS
 .DS_Store

@@ -213,7 +213,8 @@ def _execute(item):
 
     # Transport and window commands — no safeToEdit required.
     if action in ("play", "stop", "record", "save", "undo", "redo",
-                  "show_channel_rack", "show_mixer", "show_playlist", "show_piano_roll", "notify"):
+                  "show_channel_rack", "show_mixer", "show_playlist", "show_piano_roll", "notify",
+                  "render", "toggle_record_mode", "jump_to_start", "jump_to_end", "tempo_tap"):
         commands = {
             "play":              lambda: transport.start(),
             "stop":              lambda: transport.stop(),
@@ -226,6 +227,13 @@ def _execute(item):
             "show_playlist":     lambda: ui.showWindow(2),
             "show_piano_roll":   lambda: ui.showWindow(3),
             "notify":            lambda: ui.setHintMsg(str(value or "FOURIA is ready.")),
+            # NOTE: globalTransport codes below are based on FL Studio MIDI docs;
+            # verify on real device — exact codes may differ by FL version.
+            "render":            lambda: transport.globalTransport(100, 1),  # opens Export dialog (Ctrl+R)
+            "toggle_record_mode": lambda: transport.globalTransport(10, 1),  # toggle song/pattern mode
+            "jump_to_start":     lambda: transport.globalTransport(101, 1),  # go to song start
+            "jump_to_end":       lambda: transport.globalTransport(102, 1),  # go to song end
+            "tempo_tap":         lambda: transport.globalTransport(108, 1),  # tap tempo
         }
         commands[action]()
         return {"action": action}
@@ -291,6 +299,8 @@ def _execute(item):
         plugins.nextPreset(index, int(value.get("slot", -1)), True)
     elif action == "previous_preset":
         plugins.prevPreset(index, int(value.get("slot", -1)), True)
+    elif action == "randomize_preset":
+        plugins.randomize(index, int(value.get("slot", -1)), True)
     elif action == "set_pattern_name":
         patterns.setPatternName(index, str(value["name"])[:64])
     elif action == "select_pattern":
@@ -301,6 +311,13 @@ def _execute(item):
         playlist.muteTrack(index, int(bool(value.get("enabled", True))))
     elif action == "solo_playlist":
         playlist.soloTrack(index, int(bool(value.get("enabled", True))))
+    elif action == "set_playlist_track_color":
+        playlist.setTrackColor(index, int(value["color"]))
+    elif action == "clone_pattern":
+        # patterns.clonePattern may not exist in all FL versions — wrapped safely
+        _safe(lambda: patterns.clonePattern(index))
+    elif action == "set_pattern_color":
+        patterns.setPatternColor(index, int(value["color"]))
     elif action == "set_tempo":
         general.setProjectTempo(_clamp(float(value["bpm"]), 40, 280))
     elif action == "load_sample":

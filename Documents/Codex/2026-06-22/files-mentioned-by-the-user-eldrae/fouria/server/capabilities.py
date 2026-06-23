@@ -19,6 +19,9 @@ CAPABILITIES = {
     "set_tempo": {"status": "implemented", "evidence": "general.setProjectTempo via bridge"},
     "load_sample": {"status": "implemented", "evidence": "channels.setChannelSampleFile via bridge"},
     "step_pattern_write": {"status": "implemented", "evidence": "channels.setGridBit 32-step via bridge"},
+    "render_export": {"status": "implemented", "evidence": "transport.globalTransport(100,1) opens FL render dialog"},
+    "playlist_arrangement": {"status": "partial", "evidence": "clone pattern, color, mute, solo; no drag-to-playlist-position (FL API limitation)"},
+    "preset_randomize": {"status": "implemented", "evidence": "plugins.randomize via bridge"},
 }
 
 

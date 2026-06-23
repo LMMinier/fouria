@@ -100,6 +100,29 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "render_project",
+            "description": "Open FL Studio's render/export dialog to bounce the project to audio. Use when user says 'render', 'export', 'bounce', 'mixdown'.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "arrange_pattern",
+            "description": "Clone or organize patterns in the FL Studio playlist.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern_index": {"type": "integer", "description": "Pattern index to clone/arrange"},
+                    "operation": {"type": "string", "description": "clone or color", "enum": ["clone", "color"]},
+                },
+                "required": ["operation"],
+            },
+        },
+    },
 ]
 
 
@@ -165,6 +188,26 @@ def handle_tool(name: str, args: dict, fl_project: dict) -> dict:
     if name == "production_help":
         # No FL actions — just return topic for the caller to generate a chat reply
         return {"ok": True, "intent": "production_help", "topic": args.get("topic", ""), "actions": []}
+
+    if name == "render_project":
+        return {
+            "ok": True, "intent": "render",
+            "actions": [{"action": "render", "value": {}}],
+            "requires_fl_bridge": True,
+            "verification": "FL Studio render dialog should open. Configure output settings.",
+        }
+
+    if name == "arrange_pattern":
+        op = args.get("operation", "clone")
+        idx = int(args.get("pattern_index", 0))
+        if op == "clone":
+            return {
+                "ok": True, "intent": "pattern_edit",
+                "actions": [{"action": "clone_pattern", "value": {"index": idx}}],
+                "requires_fl_bridge": True,
+                "verification": "Check FL Studio playlist for new cloned pattern.",
+            }
+        return {"ok": False, "error": "Unknown operation"}
 
     return {"ok": False, "error": f"Unknown tool: {name}"}
 
