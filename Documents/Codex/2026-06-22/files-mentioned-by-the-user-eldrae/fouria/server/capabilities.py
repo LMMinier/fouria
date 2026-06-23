@@ -22,6 +22,10 @@ CAPABILITIES = {
     "render_export": {"status": "implemented", "evidence": "transport.globalTransport(100,1) opens FL render dialog"},
     "playlist_arrangement": {"status": "partial", "evidence": "clone pattern, color, mute, solo; no drag-to-playlist-position (FL API limitation)"},
     "preset_randomize": {"status": "implemented", "evidence": "plugins.randomize via bridge"},
+    "piano_roll_write": {
+        "status": "implemented",
+        "evidence": "virtual MIDI via rtmidi (Python) or virtual_midi.exe (C++ / Windows WinMM); requires loopMIDI installed and FL Studio armed to record"
+    },
 }
 
 

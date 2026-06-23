@@ -311,6 +311,10 @@ class FouriaHandler(BaseHTTPRequestHandler):
         if path == "/api/capabilities":
             return self._send(capability_report())
 
+        if path == "/api/piano_roll/ports":
+            from midi_output import list_midi_ports
+            return self._send(list_midi_ports())
+
         if path == "/api/library":
             return self._send({"ok": True, "sample_count": _LIBRARY_INDEX.get("sample_count", 0), "preset_count": _LIBRARY_INDEX.get("preset_count", 0), "role_counts": _LIBRARY_INDEX.get("role_counts", {}), "fl_install": _LIBRARY_INDEX.get("fl_install")})
 
@@ -485,6 +489,21 @@ class FouriaHandler(BaseHTTPRequestHandler):
                 return self._send({"ok": True, "sample_count": _LIBRARY_INDEX["sample_count"], "preset_count": _LIBRARY_INDEX["preset_count"], "role_counts": _LIBRARY_INDEX["role_counts"]})
             except Exception as exc:
                 return self._send({"ok": False, "error": str(exc)}, 500)
+
+        if path == "/api/piano_roll/send":
+            p = self._read_json()
+            if p is None: return
+            from midi_output import send_notes_to_piano_roll, list_midi_ports
+            events = p.get("events", [])
+            bpm = int(p.get("bpm", 140))
+            if not events:
+                return self._send({"ok": False, "error": "events required"})
+            import threading
+            def _send_async():
+                send_notes_to_piano_roll(events, bpm)
+            threading.Thread(target=_send_async, daemon=True).start()
+            return self._send({"ok": True, "notes_queued": len(events), "bpm": bpm,
+                                "note": "Notes sending to Piano Roll via virtual MIDI. Make sure FL Studio is armed to record on the target channel."})
 
         if path == "/api/beat":
             p = self._read_json()

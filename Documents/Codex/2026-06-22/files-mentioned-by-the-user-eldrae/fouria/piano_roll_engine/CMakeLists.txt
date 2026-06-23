@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(fouria_piano_roll_engine C)
+add_executable(virtual_midi virtual_midi.cpp)
+target_link_libraries(virtual_midi winmm)
+set_target_properties(virtual_midi PROPERTIES OUTPUT_NAME "virtual_midi")

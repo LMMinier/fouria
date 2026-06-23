@@ -111,6 +111,24 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "send_to_piano_roll",
+            "description": "Send notes directly to FL Studio's Piano Roll via virtual MIDI. FL Studio must be armed to record on the target channel. Use when user says 'write this to piano roll', 'put this in the piano roll', 'play these notes into FL'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key":   {"type": "string", "description": "Musical key, e.g. F, C#"},
+                    "scale": {"type": "string", "description": "minor, major, harmonic_minor"},
+                    "bpm":   {"type": "integer", "description": "BPM for timing"},
+                    "bars":  {"type": "integer", "description": "Number of bars"},
+                    "type":  {"type": "string", "description": "melody, chords, or drums_808", "enum": ["melody", "chords", "drums_808"]},
+                },
+                "required": ["type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "arrange_pattern",
             "description": "Clone or organize patterns in the FL Studio playlist.",
             "parameters": {
@@ -195,6 +213,35 @@ def handle_tool(name: str, args: dict, fl_project: dict) -> dict:
             "actions": [{"action": "render", "value": {}}],
             "requires_fl_bridge": True,
             "verification": "FL Studio render dialog should open. Configure output settings.",
+        }
+
+    if name == "send_to_piano_roll":
+        from midi_tools import generate_midi_spec, generate_chord_midi_spec, generate_drum_808_spec
+        key   = args.get("key", "F")
+        scale = args.get("scale", "minor")
+        bpm   = int(args.get("bpm", 140))
+        bars  = int(args.get("bars", 8))
+        t     = args.get("type", "melody")
+        if t == "melody":
+            spec = generate_midi_spec(key=key, scale=scale, bpm=bpm, bars=bars)
+        elif t == "chords":
+            spec = generate_chord_midi_spec(key=key, scale=scale, bpm=bpm, bars=bars)
+        else:
+            spec = generate_drum_808_spec(key=key, scale=scale, bpm=bpm, bars=bars)
+        events = spec.get("events", [])
+        return {
+            "ok": True, "intent": "send_to_piano_roll",
+            "piano_roll_events": events,
+            "midi_file": spec.get("path"),
+            "actions": [],
+            "requires_fl_bridge": False,
+            "note": "Arm a channel in FL Studio and enable recording, then these notes will play in. Alternatively drag the MIDI file directly.",
+            "fl_steps": [
+                "In FL Studio: arm the target channel (click the record button on the channel)",
+                "Enable Edison or pattern recording (Transport > Record)",
+                "FOURIA is sending notes via virtual MIDI -- they'll land in your Piano Roll.",
+                "If nothing plays: Options > MIDI Settings > add 'loopMIDI Port' as input device.",
+            ],
         }
 
     if name == "arrange_pattern":
